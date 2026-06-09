@@ -1,53 +1,149 @@
-# vpn-xray
-Как получить готовый EXE без возни
-Сразу честно: внутри текущего Workspace я не могу собрать настоящий Windows .exe, потому что здесь нет:
+# XrayQtClient
 
-Windows toolchain
-Qt for Windows
-cmake
-windeployqt
-MinGW/MSVC cross-compiler
-Но я подготовил самый быстрый вариант, чтобы вы получили готовый EXE почти без настройки.
+Windows desktop-клиент на **C++ / Qt Widgets**, который работает через **xray-core** и по интерфейсу приближен к отдельному GUI-клиенту в духе Nekoray.
 
-Вариант 1 — GitHub Actions, почти без усилий
-В проект добавлен файл:
+## Что реализовано в текущей версии
 
-text
+- импорт ссылок `vless://`, `vmess://`, `trojan://`, `ss://`
+- **subscription URL** с загрузкой конфигов
+- **автообновление подписок** по таймеру
+- список серверов и перепинг всех профилей
+- **полноценный редактор профиля**
+- **импорт / экспорт JSON**
+- большая кнопка **«Подключить»** по центру
+- запуск **xray-core** как встроенного backend (`xray.exe` рядом с приложением)
+- **системный прокси Windows** для HTTP/HTTPS/SOCKS
+- **tray icon** с базовыми действиями
+- **тёмная тема** и более современный интерфейс
+- более точный счётчик трафика через **xray api statsquery / StatsService**
+- **TUN mode (экспериментальный переключатель)**
 
-.github/workflows/build-windows.yml
-Что нужно сделать:
+## Важное уточнение про Nekoray
 
-Загрузить папку xray_client в GitHub-репозиторий
-При необходимости положить third_party/xray/xray.exe
-Открыть вкладку Actions
-Запустить workflow Build Windows EXE
-Скачать готовый artifact XrayQtClient-Windows-Release
-На выходе вы получите папку release/, где будет:
+В этом проекте я сделал **собственный Qt-клиент**, который использует **xray-core**.
 
-XrayQtClient.exe
-Qt DLL
-platform plugins
-при наличии — third_party/xray/xray.exe
-Вариант 2 — локально одной командой на Windows
-Я добавил файл:
+**Код Nekoray не встроен напрямую** — это отдельный проект со своей архитектурой и зависимостями. Но UI и сценарии использования здесь уже сильно ближе к nekoray-подобному desktop-клиенту.
 
-text
+## Структура проекта
 
-build_release.bat
-Если у вас уже установлен Qt + MSVC/Qt Creator, просто запустите:
+```text
+xray_client/
+├─ CMakeLists.txt
+├─ README.md
+├─ src/
+│  ├─ main.cpp
+│  ├─ MainWindow.h / MainWindow.cpp
+│  ├─ RunOptions.h
+│  ├─ Profile.h
+│  ├─ ProfileRepository.h / .cpp
+│  ├─ ProfileEditDialog.h / .cpp
+│  ├─ Subscription.h
+│  ├─ SubscriptionRepository.h / .cpp
+│  ├─ SubscriptionFetcher.h / .cpp
+│  ├─ UriParser.h / .cpp
+│  ├─ XrayConfigBuilder.h / .cpp
+│  ├─ XrayProcess.h / .cpp
+│  ├─ XrayStatsMonitor.h / .cpp
+│  ├─ WindowsProxyManager.h / .cpp
+│  └─ TrafficMonitor.h / .cpp
+└─ third_party/
+   └─ xray/
+      └─ xray.exe
+```
 
-bat
+## Сборка
 
-build_release.bat
-Итоговая portable-сборка появится в папке:
+### Вариант 1: Qt Creator
 
-text
+1. Установите Qt 6 или Qt 5 с модулями `Widgets` и `Network`
+2. Откройте `CMakeLists.txt`
+3. Выберите Windows kit
+4. Соберите проект
 
-release/
-Почему я не создал EXE прямо здесь
-Потому что текущая среда — не Windows и в ней отсутствуют инструменты сборки Windows/Qt. Создать настоящий рабочий .exe без компилятора и Qt runtime здесь невозможно.
+### Вариант 2: CMake + MSVC
 
-Если хотите — я могу следующим сообщением ещё подготовить
-release.zip packaging script
-Inno Setup .iss для установщика
-автосборку релиза с версией и именованным архивом
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release
+```
+
+## Как подключить xray-core
+
+Скачайте официальный `xray-core` для Windows и поместите `xray.exe` в:
+
+```text
+third_party/xray/xray.exe
+```
+
+или рядом с итоговым `.exe` приложения.
+
+## Поддерживаемые сценарии
+
+### 1. Импорт одной ссылки
+
+Вставьте URI в верхнее поле и нажмите **Импорт URI**.
+
+### 2. Подписки
+
+На вкладке **«Подписки и настройки»**:
+
+1. вставьте Subscription URL
+2. нажмите **«Добавить подписку»**
+3. нажмите **«Обновить подписки»**
+4. при включённом автообновлении подписки будут перезагружаться по таймеру
+
+Подписочные профили сохраняются отдельно и помечаются источником `subscription`.
+
+### 3. JSON импорт / экспорт
+
+Экспортирует и импортирует:
+
+- профили
+- список подписок
+- базовые настройки UI/сети
+
+## Системный прокси Windows
+
+Если активировать опцию **«Включать системный прокси Windows»**, приложение будет использовать:
+
+- HTTP/HTTPS: `127.0.0.1:10809`
+- SOCKS: `127.0.0.1:10808`
+
+При отключении соединения клиент пытается восстановить предыдущие настройки системного прокси.
+
+## Статистика трафика
+
+Трафик теперь берётся не из общей сетевой активности Windows, а через **xray statistics API**.
+
+Клиент генерирует конфиг с включёнными:
+
+- `StatsService`
+- `policy.system.statsOutboundUplink`
+- `policy.system.statsOutboundDownlink`
+
+и опрашивает `xray api statsquery --server=127.0.0.1:10085`.
+
+## TUN mode
+
+В проект добавлен **экспериментальный переключатель TUN mode**.
+
+Важно:
+
+- режим может требовать права администратора
+- на Windows могут потребоваться дополнительные действия по маршрутизации и настройке интерфейса
+- текущая реализация помечена как **experimental**, а не как production-ready замена полноценному Nekoray TUN stack
+
+## Ограничения текущей версии
+
+- TUN-режим оставлен в экспериментальном состоянии
+- не реализован отдельный мастер управления маршрутизацией для TUN
+- импорт подписок поддерживает типичный plain-text/base64 формат со списком URI
+- точность статистики зависит от установленной версии `xray.exe` и доступности `api statsquery`
+
+## Что можно улучшить дальше
+
+- добавить drag-and-drop импорт ссылок
+- добавить редактор подписок с именами и параметрами
+- добавить иконки статуса в трей и toast-уведомления
+- сделать более близкий к Nekoray layout с сайдбаром и карточками серверов
+- добавить release packaging / windeployqt / zip release script
